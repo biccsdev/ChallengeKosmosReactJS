@@ -1,3 +1,5 @@
+# Challenge Kosmos REACTJS
+
 1. Los componentes no deben de salirse del div con id "parent" al arrastrarse
 
 2. Cada componente debe de tener una imagen única, la cual con estilos propios, no debe salir del componente al que se le hace resize y deben de tener un fit diferente "cover", "contain", etc. e
