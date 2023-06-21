@@ -1,30 +1,41 @@
 import React, { useRef, useState, useEffect } from "react";
 import Moveable from "react-moveable";
+import styles from './styles.css';
 
 const App = () => {
   const [moveableComponents, setMoveableComponents] = useState([]);
   const [selected, setSelected] = useState(null);
+  const parentRef = useRef(null);
 
-  const addMoveable = () => {
-    // Create a new moveable component and add it to the array
+  const addMoveable = async () => {
     const COLORS = ["red", "blue", "yellow", "green", "purple"];
 
-    setMoveableComponents([
-      ...moveableComponents,
-      {
-        id: Math.floor(Math.random() * Date.now()),
-        top: 0,
-        left: 0,
-        width: 100,
-        height: 100,
-        color: COLORS[Math.floor(Math.random() * COLORS.length)],
-        updateEnd: true
-      },
-    ]);
+    try {
+      const response = await fetch("https://jsonplaceholder.typicode.com/photos");
+      const data = await response.json();
+      const imageUrl = data[Math.floor(Math.random() * data.length)].url;
+
+      setMoveableComponents((prevComponents) => [
+        ...prevComponents,
+        {
+          id: Math.floor(Math.random() * Date.now()),
+          top: 0,
+          left: 0,
+          width: 100,
+          height: 100,
+          color: COLORS[Math.floor(Math.random() * COLORS.length)],
+          imageUrl: imageUrl,
+          updateEnd: true,
+          parentRef: parentRef
+        },
+      ]);
+    } catch (error) {
+      console.log("Error fetching image:", error);
+    }
   };
 
   const updateMoveable = (id, newComponent, updateEnd = false) => {
-    const updatedMoveables = moveableComponents.map((moveable, i) => {
+    const updatedMoveables = moveableComponents.map((moveable) => {
       if (moveable.id === id) {
         return { id, ...newComponent, updateEnd };
       }
@@ -33,30 +44,20 @@ const App = () => {
     setMoveableComponents(updatedMoveables);
   };
 
-  const handleResizeStart = (index, e) => {
-    console.log("e", e.direction);
-    // Check if the resize is coming from the left handle
-    const [handlePosX, handlePosY] = e.direction;
-    // 0 => center
-    // -1 => top or left
-    // 1 => bottom or right
+  const handleResizeStart = (id, e) => {
+    setSelected(id);
+  };
 
-    // -1, -1
-    // -1, 0
-    // -1, 1
-    if (handlePosX === -1) {
-      console.log("width", moveableComponents, e);
-      // Save the initial left and width values of the moveable component
-      const initialLeft = e.left;
-      const initialWidth = e.width;
-
-      // Set up the onResize event handler to update the left value based on the change in width
-    }
+  const handleDelete = (id) => {
+    const updatedMoveables = moveableComponents.filter(
+      (moveable) => moveable.id !== id
+    );
+    setMoveableComponents(updatedMoveables);
   };
 
   return (
-    <main style={{ height : "100vh", width: "100vw" }}>
-      <button onClick={addMoveable}>Add Moveable1</button>
+    <main style={{ height: "100vh", width: "100vw" }}>
+      <button onClick={addMoveable}>Add Moveable</button>
       <div
         id="parent"
         style={{
@@ -65,15 +66,18 @@ const App = () => {
           height: "80vh",
           width: "80vw",
         }}
+        ref={parentRef}
       >
-        {moveableComponents.map((item, index) => (
+        {moveableComponents.map((item) => (
           <Component
             {...item}
-            key={index}
+            key={item.id}
             updateMoveable={updateMoveable}
             handleResizeStart={handleResizeStart}
+            handleDelete={handleDelete}
             setSelected={setSelected}
             isSelected={selected === item.id}
+            parentRef={parentRef}
           />
         ))}
       </div>
@@ -85,36 +89,38 @@ export default App;
 
 const Component = ({
   updateMoveable,
+  handleResizeStart,
+  handleDelete,
   top,
   left,
   width,
   height,
-  index,
   color,
+  imageUrl,
   id,
   setSelected,
   isSelected = false,
   updateEnd,
+  parentRef,
 }) => {
   const ref = useRef();
+  const imageRef = useRef();
+  const [x, setX] = useState(left);
+  const [y, setY] = useState(top);
 
   const [nodoReferencia, setNodoReferencia] = useState({
     top,
     left,
     width,
     height,
-    index,
     color,
     id,
   });
 
-  let parent = document.getElementById("parent");
-  let parentBounds = parent?.getBoundingClientRect();
-  
   const onResize = async (e) => {
-    // ACTUALIZAR ALTO Y ANCHO
-    let newWidth = e.width;
-    let newHeight = e.height;
+    const parentBounds = parentRef.current.getBoundingClientRect();
+    const newWidth = e.width;
+    const newHeight = e.height;
 
     const positionMaxTop = top + newHeight;
     const positionMaxLeft = left + newWidth;
@@ -131,6 +137,7 @@ const Component = ({
       height: newHeight,
       color,
     });
+
 
     // ACTUALIZAR NODO REFERENCIA
     const beforeTranslate = e.drag.beforeTranslate;
@@ -153,6 +160,8 @@ const Component = ({
   };
 
   const onResizeEnd = async (e) => {
+    const parentBounds = parentRef.current?.getBoundingClientRect(); // Move inside the function
+
     let newWidth = e.lastEvent?.width;
     let newHeight = e.lastEvent?.height;
 
@@ -184,6 +193,58 @@ const Component = ({
     );
   };
 
+
+  const onDragEnd = () => {
+    updateMoveable(id, {
+      top: y,
+      left: x,
+      width,
+      height,
+      color,
+    });
+  };
+
+  const onDrag = (e) => {
+    const parentBounds = parentRef.current?.getBoundingClientRect(); // Move inside the function
+
+    let newX = e.clientX;
+    let newY = e.clientY;
+
+    if (x < parentBounds.left) {
+      newX = parentBounds.left;
+    } else if (x + width > parentBounds.right) {
+      newX = parentBounds.right - width;
+    }
+
+    if (y < parentBounds.top) {
+      newY = parentBounds.top;
+    } else if (y + height > parentBounds.bottom) {
+      newY = parentBounds.bottom - height;
+    }
+
+    // Update the position of the component
+    setX(newX);
+    setY(newY);
+  };
+
+  useEffect(() => {
+    const handleWindowResize = () => {
+      const parentBounds = parentRef.current?.getBoundingClientRect();
+      const imageWidth = parentBounds?.width || 0;
+      const imageHeight = parentBounds?.height || 0;
+
+      // Actualizar el tamaño de la imagen
+      imageRef.current.style.width = `${imageWidth}px`;
+      imageRef.current.style.height = `${imageHeight}px`;
+    };
+
+    window.addEventListener("resize", handleWindowResize);
+
+    return () => {
+      window.removeEventListener("resize", handleWindowResize);
+    };
+  }, []);
+
   return (
     <>
       <div
@@ -192,28 +253,36 @@ const Component = ({
         id={"component-" + id}
         style={{
           position: "absolute",
-          top: top,
-          left: left,
+          top: y,
+          left: x,
           width: width,
           height: height,
           background: color,
         }}
         onClick={() => setSelected(id)}
-      />
+        draggable="true"
+        onDrag={onDrag}
+        onDragEnd={onDragEnd}
+      >
+        <img
+          ref={imageRef}
+          src={imageUrl}
+          alt="Component Image"
+        />
+
+        <button
+          onClick={() => handleDelete(id)}
+          style={{ position: "absolute", top: 0, right: 0 }}
+        >
+          X
+        </button>
+      </div>
 
       <Moveable
         target={isSelected && ref.current}
         resizable
         draggable
-        onDrag={(e) => {
-          updateMoveable(id, {
-            top: e.top,
-            left: e.left,
-            width,
-            height,
-            color,
-          });
-        }}
+        onDrag={onDrag}
         onResize={onResize}
         onResizeEnd={onResizeEnd}
         keepRatio={false}
